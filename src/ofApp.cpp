@@ -2,7 +2,7 @@
 
 //--------------------------------------------------------------
 void ofApp::setup(){
-    ray.setup(glm::vec2(100,100), glm::vec2(0,1));
+    sender.setup(HOST, PORT);
 
     blur.setupRGB(ofGetWindowWidth(), ofGetWindowHeight());
     blur.setMode(3);
@@ -10,39 +10,34 @@ void ofApp::setup(){
     parameters.add(blur.parametersRGB);
     parameters.add(freq.set("freq",0.5,0.1, 3.0));
     parameters.add(maxLineLength.set("max l length", 1,3,15));
-    parameters.add(ballThreshold.set("ball trld", 0.01, 0.01, 0.5));
-    parameters.add(ballVel.set("ball vel", 4.5, 0.1, 40.5));
-    parameters.add(ballhistory.set("history", 10, 2, 40));
+    parameters.add(velocity.set("ball vel", 4.5, 0.1, 40.5));
 
     gui.setup(parameters);
     gui.loadFromFile("settings.xml");
 
     bypass = false; //bypass shader;
 
-    ball = Ball(15.0, ofFloatColor::coral, ray.getOrigin());
+    auto orig = glm::vec2(ofGetWidth()/2, ofGetHeight()/2);
+    auto sinedT = sin(ofGetElapsedTimef() * freq);
+    auto cosinedT = cos(ofGetElapsedTimef() * freq);
+    auto startDir = glm::vec2(sinedT, cosinedT);
+
+    ray.init(orig, startDir, 500);
+
+    startLSystem("F",
+                 "F -> FF+[+F-F-F]-[-F+F+F]",
+                 15,
+                 2,
+                 "",
+                 false
+                 );
 }
+
+
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    auto orig = glm::vec2(ofGetWidth()/2, ofGetHeight()/2);
-    ray.setOrigin(orig);
-
-    float sinedT;
-    float cosinedT;
-    if (rotateRay){
-        sinedT = sin(ofGetElapsedTimef() * freq);
-        cosinedT = cos(ofGetElapsedTimef() * freq);
-    } else {
-        sinedT = sin(oldTime * freq);
-        cosinedT = cos(oldTime * freq);
-    }
-
-    ray.setDirection(glm::vec2(sinedT, cosinedT));
-
-    intersections.clear();
-    int maxBounces = 30;
-    collectBounces(ray, maxBounces, intersections);
-    ball.update(intersections, ballThreshold, ballVel, ballhistory);
+    ray.bounce(lsegments, velocity, sender);
 }
 
 //--------------------------------------------------------------
@@ -50,18 +45,15 @@ void ofApp::draw(){
     blur.begin();
     ray.draw();
 
+    //lsystem.draw();
+
     if (drawSegments) {
-        for(auto s:segments){
+        for(auto s:lsegments){
             ofPushStyle();
             ofSetColor(s.color);
             ofDrawLine(s.a, s.b);
             ofPopStyle();
         }
-    }
-
-    //consumeBounces(intersections, 0.5);
-    if(!intersections.empty()){
-       ball.draw();
     }
 
 
@@ -75,50 +67,6 @@ void ofApp::draw(){
         gui.draw();
     }
 }
-
-void ofApp::collectBounces(ofxraycaster::Ray<glm::vec2>& myRay, int& limit, vector<glm::vec2> &intersections){
-    float eps = 0.00001;
-    while(limit > 0){
-        limit--;
-        float distance = std::numeric_limits<float>::infinity();
-        float tmpDistance;
-        bool intersection = false;
-        Segment tmpSegment;
-        //find the closest segment that intersect with the ray
-        // save it into tmpSegment, and save the distance too.
-        for (auto s:segments) {
-            if (myRay.intersectsSegment(s.a, s.b, tmpDistance)) {
-                if (intersection == false) { intersection = true;};
-                if (tmpDistance < distance){
-                    distance = tmpDistance;
-                    tmpSegment = s;
-                }
-            }
-        }
-
-        if (intersection) {
-            //add the origin if it is the first intersection
-            if  (intersections.empty())  {
-                intersections.push_back(myRay.getOrigin());
-            }
-
-            auto intersectionPoint = myRay.getOrigin() + myRay.getDirection() * distance;
-            intersections.push_back(intersectionPoint);
-            // the direction of the ray will be the direction of the reflected light
-            auto segmentDir = tmpSegment.a - tmpSegment.b;
-            auto segmentSurfaceNormal = glm::vec2(segmentDir.y, -segmentDir.x);
-            auto reflectDir = glm::reflect(myRay.getDirection(), segmentSurfaceNormal);
-
-            // the origin of the new ray is the intersection point moved a bit along the
-            // reflected direction. This is to avoid to have a new ray that intersect with the segment
-            // on which its origin lays.
-
-            myRay.setup(intersectionPoint + reflectDir * eps, reflectDir);
-            collectBounces(myRay, limit, intersections);
-        }
-    }
-}
-
 
 
 void ofApp::drawLine(glm::vec2 o, glm::vec2 e, ofColor c){
@@ -136,6 +84,7 @@ void ofApp::keyPressed(int key){
     }
     if (key == 'c') {
         segments.clear();
+        ray.reset();
     }
     if (key == 's') {
         drawSegments = !drawSegments;
@@ -195,6 +144,7 @@ void ofApp::mouseReleased(int x, int y, int button){
     segTemp.a = startPoint;
     segTemp.b = endPoint;
     segTemp.color = col;
+    segTemp.note = ofRandom(10, 70);
     segments.push_back(segTemp);
     isDrawing = false;
 }
@@ -222,4 +172,74 @@ void ofApp::gotMessage(ofMessage msg){
 //--------------------------------------------------------------
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
+}
+
+void ofApp::startLSystem(string axiom,
+                         string rulesString,
+                         float theta,
+                         int depth,
+                         string _constants,
+                         bool randomZRotation){
+    auto constants = getConstants(_constants);
+    auto rules = getRules(rulesString);
+    lsystem.setAxiom(axiom);
+    lsystem.setRules(rules);
+    lsystem.setTheta(theta);
+    lsystem.setStep(depth);
+    lsystem.setStepLength(40);
+    //lsystem.setScaleWidth(true);
+    lsystem.setGeometry(LINES);
+    lsystem.setConstants(constants);
+    lsystem.setRandomYRotation(false);
+    lsystem.build();
+
+    // the ofxLsystem addon is thought for 3D world coordinate system
+    lsystem.setPosition(ofGetWidth()/2, 600, 0);
+    lsystem.rollDeg(180);
+
+    lsegments.clear();
+    lsegments = getSegments(lsystem.getMesh());
+}
+
+vector<Segment>ofApp::getSegments(const ofMesh mesh){
+    vector<Segment> result;
+    auto vertices = mesh.getVertices();
+    for (int i = 0; i< vertices.size(); i+=2) {
+        Segment tmpSegment;
+        auto a = lsystem.getGlobalTransformMatrix() * glm::vec4(vertices[i], 1.f);
+        auto b = lsystem.getGlobalTransformMatrix() * glm::vec4(vertices[i+1], 1.f);
+        tmpSegment.a = glm::vec2(a.x, a.y);
+        tmpSegment.b = glm::vec2(b.x, b.y);
+
+        result.push_back(tmpSegment);
+    }
+    return result;
+};
+
+//it expects a single string like "y=0.54353;t=1"
+map<string,float>ofApp::getConstants(string _constant) const{
+    map<string,float> result;
+    auto parts = ofSplitString(_constant, ";");
+    for (auto con : parts){
+        auto def = ofSplitString(con, "=");
+        if(def.size() == 2){
+            result.insert(make_pair(def[0], ofToFloat(def[1])));
+        }
+    }
+    return result;
+}
+
+vector<string>ofApp::getRules(string rules) const{
+    vector<string> stringRules;
+    if(rules.find(";") != std::string::npos){
+        //multiple rules
+        auto rule_container = ofSplitString(rules, ";");
+        for(auto r:rule_container){
+            stringRules.push_back(r);
+        }
+    }else{
+        //single rule
+        stringRules.push_back(rules);
+    }
+    return stringRules;
 }

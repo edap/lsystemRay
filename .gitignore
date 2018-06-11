@@ -10,6 +10,9 @@ Release*/
 .svn/
 
 #XCode
+*Project.xcconfig
+*lsystemRay.xcodeproj/*
+*openFrameworks-Info.plist
 *.pbxuser
 *.perspective
 *.perspectivev3

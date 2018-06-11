@@ -3,16 +3,18 @@
 #include "ofMain.h"
 #include "ofxRaycaster.h"
 #include "ofxBlurUtils.h"
+#include "ofxOscSender.h"
 #include "ofxGui.h"
+#include "Segment.h"
+#include "ofxLSystem.h"
 
-#include "Ball.h"
+#include "Ray.h"
 
-class Segment {
-public:
-    glm::vec2 a;
-    glm::vec2 b;
-    ofColor color;
-};
+// send host (aka ip address)
+#define HOST "localhost"
+
+/// send port
+#define PORT 4559
 
 
 class ofApp : public ofBaseApp{
@@ -36,15 +38,19 @@ class ofApp : public ofBaseApp{
         void collectBounces(ofxraycaster::Ray<glm::vec2>& myRay, int &limit, vector<glm::vec2>& intersections);
         void drawLine(glm::vec2 o, glm::vec2 e, ofColor col);
 
+private:
+    void startLSystem(
+                      string axiom,
+                      string selectedRule,
+                      float theta,
+                      int depth,
+                      string constants,
+                      bool randomZRotation);
+    map<string,float> getConstants(string _constants) const;
+    vector<string> getRules(string rules) const;
 
     vector<Segment> segments;
-    ofxraycaster::Ray<glm::vec2> ray;
-    glm::vec2 startPoint;
-    glm::vec2 endPoint;
-
-    // Ball
-    vector<glm::vec2> intersections;
-    Ball ball;
+    Ray ray;
 
     // blur effect
     ofxBlurUtils blur;
@@ -58,16 +64,27 @@ class ofApp : public ofBaseApp{
     bool rotateRay = true;
     float oldTime = 0;
 
+    // draw segment with mouse
+    glm::vec2 startPoint;
+    glm::vec2 endPoint;
+
     ofxPanel gui;
     ofParameter <float> freq;
     ofParameter <float> maxLineLength;
-    ofParameter <float> ballThreshold;
-    ofParameter <float> ballVel;
-    ofParameter <int> ballhistory;
+    ofParameter <float> velocity;
     ofParameterGroup parameters;
+    
+    ofParameterGroup lsysParameters;
+
     ofXml settings;
 
-private:
-  ofEventListener ballListener;
+    ofxOscSender sender;
+
+    //Lsystem
+    ofxLSystem  lsystem;
+    vector<Segment> lsegments;
+    vector<Segment> getSegments(const ofMesh mesh);
+
+
 
 };

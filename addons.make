@@ -1,2 +1,7 @@
+ofxAbletonLive
+ofxBlurUtils
 ofxGui
+ofxLSystem
+ofxLSystemGrammar
+ofxOsc
 ofxRaycaster
